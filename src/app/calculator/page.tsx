@@ -38,29 +38,24 @@ const CustomYAxisTick: React.FC<any> = (props) => {
   );
 };
 
-/** Custom tooltip for the profit amount chart.
- *  For the Contractor row, it omits investor profit.
+/** Custom label for the contractor profit segment.
+ *  It positions the contractor profit value near the bottom of its segment.
+ *  Negative values are rendered in red.
  */
-const CustomBarTooltip: React.FC<any> = ({ active, payload, label }) => {
-  if (active && payload && payload.length) {
-    const data = payload[0].payload;
-    if (data.name === 'Contractor') {
-      return (
-        <div className="custom-tooltip bg-white p-2 border">
-          <p>{`Contractor Profit: ${formatThousands(data.contractorProfit)}`}</p>
-          <p>{`Labor Cost: ${formatThousands(data.laborCost)}`}</p>
-          <p>{`Total Revenue: ${formatThousands(data.contractorRevenue)}`}</p>
-        </div>
-      );
-    } else {
-      return (
-        <div className="custom-tooltip bg-white p-2 border">
-          <p>{`Investor Profit: ${formatThousands(data.investorProfit)}`}</p>
-        </div>
-      );
-    }
-  }
-  return null;
+const renderContractorProfitLabel = (props: any) => {
+  const { x, y, width, value } = props;
+  // Position label inside the bottom of the contractor profit segment.
+  const labelY = value < 0 ? y + 15 : y - 5;
+  return (
+    <text
+      x={x + width / 2}
+      y={labelY}
+      textAnchor="middle"
+      fill={value < 0 ? "red" : "black"}
+    >
+      {formatThousands(value)}
+    </text>
+  );
 };
 
 /** Reusable Card component with a title */
@@ -140,7 +135,6 @@ const SalePriceSlider: React.FC<SalePriceSliderProps> = ({
   const salePricePercent = ((value - min) / sliderRange) * 100;
   const baseCostPercent = ((baseCost - min) / sliderRange) * 100;
   const profitPercentage = ((value - baseCost) / baseCost) * 100;
-
   return (
     <div className="flex items-center">
       {/* Sale Price display to the left */}
@@ -235,9 +229,9 @@ const ProfitSharingDashboard: React.FC = () => {
   const metrics = calculateMetrics(salePrice, acquisitionCost, laborCost, materialCost);
   const totalBaseCost = metrics.totalBaseCost;
 
-  // For Contractor: The stacked bar will have:
-  // - Bottom segment: contractorProfit
-  // - Top segment: laborCost
+  // For Contractor: We want a stacked bar.
+  // - Bottom segment: contractorProfit.
+  // - Top segment: laborCost.
   // The overall contractor revenue is laborCost + contractorProfit.
   const contractorRevenue = laborCost + metrics.contractorProfit;
 
@@ -272,8 +266,9 @@ const ProfitSharingDashboard: React.FC = () => {
     });
   }, [acquisitionCost, laborCost, materialCost]);
 
-  // Combined data for the profit amount ($) chart:
-  // For Investor, we now explicitly set contractor fields to 0.
+  // Combined data for the profit amount ($) chart.
+  // For Investor: Include investorProfit (and set contractor-related fields to 0).
+  // For Contractor: Include contractorProfit and laborCost.
   const combinedProfitData = [
     {
       name: 'Investor',
@@ -287,7 +282,7 @@ const ProfitSharingDashboard: React.FC = () => {
       investorProfit: 0,
       contractorProfit: metrics.contractorProfit,
       laborCost: laborCost,
-      contractorRevenue: contractorRevenue,
+      contractorRevenue: laborCost + metrics.contractorProfit,
     },
   ];
 
@@ -377,14 +372,9 @@ const ProfitSharingDashboard: React.FC = () => {
                 ]}
                 tick={<CustomYAxisTick />}
               >
-                <Label
-                  value="Profit ($)"
-                  angle={-90}
-                  position="insideLeft"
-                  style={{ textAnchor: 'middle' }}
-                />
+                <Label value="Profit ($)" angle={-90} position="insideLeft" style={{ textAnchor: 'middle' }} />
               </YAxis>
-              <Tooltip content={<CustomBarTooltip />} />
+              <Tooltip formatter={(value: number) => formatThousands(value)} />
               {/* Investor Profit Bar */}
               <Bar dataKey="investorProfit" fill="#8884d8">
                 <LabelList dataKey="investorProfit" position="top" formatter={formatThousands} />
@@ -392,13 +382,9 @@ const ProfitSharingDashboard: React.FC = () => {
               {/* Contractor Stacked Bars (same stackId "contractor") */}
               {/* Contractor Profit segment (bottom) */}
               <Bar dataKey="contractorProfit" fill="#FF9933" stackId="contractor">
-                <LabelList
-                  dataKey="contractorProfit"
-                  position="insideBottom"
-                  content={renderContractorProfitLabel}
-                />
+                <LabelList dataKey="contractorProfit" position="insideBottom" content={renderContractorProfitLabel} />
               </Bar>
-              {/* Labor Cost segment (top) – its LabelList shows the overall contractor revenue */}
+              {/* Labor Cost segment (top) – its LabelList shows the overall revenue */}
               <Bar dataKey="laborCost" fill="#82ca9d" stackId="contractor">
                 <LabelList dataKey="contractorRevenue" position="insideTop" formatter={formatThousands} />
               </Bar>
@@ -413,12 +399,7 @@ const ProfitSharingDashboard: React.FC = () => {
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="name" />
               <YAxis tickFormatter={(value: number) => `${value}%`} domain={[0, 'auto']} tickCount={4}>
-                <Label
-                  value="Profit (%)"
-                  angle={-90}
-                  position="insideLeft"
-                  style={{ textAnchor: 'middle' }}
-                />
+                <Label value="Profit (%)" angle={-90} position="insideLeft" style={{ textAnchor: 'middle' }} />
               </YAxis>
               <Tooltip formatter={(value: number) => `${value.toFixed(2)}%`} />
               <Bar dataKey="percentage" fill="#82ca9d">
@@ -437,33 +418,13 @@ const ProfitSharingDashboard: React.FC = () => {
                 <Label value="Sale Price ($)" offset={-5} position="insideBottom" />
               </XAxis>
               <YAxis>
-                <Label
-                  value="Profit ($)"
-                  angle={-90}
-                  position="insideLeft"
-                  style={{ textAnchor: 'middle' }}
-                />
+                <Label value="Profit ($)" angle={-90} position="insideLeft" style={{ textAnchor: 'middle' }} />
               </YAxis>
               <Tooltip formatter={(value: number) => formatThousands(value)} />
               <Legend wrapperStyle={{ paddingTop: '20px' }} />
-              <Line
-                type="monotone"
-                dataKey="investorProfit"
-                name="Investor Profit"
-                stroke="#8884d8"
-              />
-              <Line
-                type="monotone"
-                dataKey="contractorProfit"
-                name="Contractor Profit"
-                stroke="#82ca9d"
-              />
-              <Line
-                type="monotone"
-                dataKey="contractorRevenue"
-                name="Contractor Revenue"
-                stroke="#FF9933"
-              />
+              <Line type="monotone" dataKey="investorProfit" name="Investor Profit" stroke="#8884d8" />
+              <Line type="monotone" dataKey="contractorProfit" name="Contractor Profit" stroke="#82ca9d" />
+              <Line type="monotone" dataKey="contractorRevenue" name="Contractor Revenue" stroke="#FF9933" />
             </LineChart>
           </ResponsiveContainer>
         </Card>
