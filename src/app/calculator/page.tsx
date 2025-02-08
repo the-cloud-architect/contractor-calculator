@@ -382,7 +382,7 @@ const ProfitSharingDashboard: React.FC = () => {
             </span>
           </div>
           <div>
-            Total Loss:{' '}
+            Total Profit/Loss:{' '}
             <span className="font-semibold">
               {formatThousands(totalLoss)}
             </span>
@@ -415,7 +415,7 @@ const ProfitSharingDashboard: React.FC = () => {
       </Card>
 
       {/* Charts Row */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
         {/* Current Profit Amount ($) Chart */}
         <Card title="Current Profit Amount ($)">
           <ResponsiveContainer width="100%" aspect={1}>
