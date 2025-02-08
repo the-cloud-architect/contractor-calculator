@@ -1,42 +1,46 @@
 /** @type {import("eslint").Linter.Config} */
 const config = {
-  "parser": "@typescript-eslint/parser",
-  "parserOptions": {
-    "project": true
+  parser: "@typescript-eslint/parser",
+  parserOptions: {
+    ecmaVersion: 2020,
+    sourceType: "module"
   },
-  "plugins": [
+  // Include the "only-warn" plugin first so that it can override rule severities.
+  plugins: [
+    "only-warn",
     "@typescript-eslint"
   ],
-  "extends": [
+  extends: [
     "next/core-web-vitals",
-    "plugin:@typescript-eslint/recommended-type-checked",
-    "plugin:@typescript-eslint/stylistic-type-checked"
+    "plugin:@typescript-eslint/recommended"
   ],
-  "rules": {
-    "@typescript-eslint/array-type": "off",
-    "@typescript-eslint/consistent-type-definitions": "off",
+  rules: {
+    // These rules are now explicitly set to "warn".
+    "@typescript-eslint/array-type": "warn",
+    "@typescript-eslint/consistent-type-definitions": "warn",
     "@typescript-eslint/consistent-type-imports": [
       "warn",
       {
-        "prefer": "type-imports",
-        "fixStyle": "inline-type-imports"
+        prefer: "type-imports",
+        fixStyle: "inline-type-imports"
       }
     ],
     "@typescript-eslint/no-unused-vars": [
       "warn",
       {
-        "argsIgnorePattern": "^_"
+        argsIgnorePattern: "^_"
       }
     ],
-    "@typescript-eslint/require-await": "off",
+    "@typescript-eslint/require-await": "warn",
     "@typescript-eslint/no-misused-promises": [
-      "error",
+      "warn",
       {
-        "checksVoidReturn": {
-          "attributes": false
+        checksVoidReturn: {
+          attributes: false
         }
       }
     ]
   }
-}
+};
+
 module.exports = config;

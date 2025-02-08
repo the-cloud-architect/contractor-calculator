@@ -1,6 +1,11 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, {
+  useState,
+  useMemo,
+  useEffect,
+  useRef,
+} from 'react';
 import {
   ResponsiveContainer,
   BarChart,
@@ -21,42 +26,77 @@ const formatThousands = (num: number): string => {
   return `$${num.toFixed(0)}K`;
 };
 
-/** Custom Y-Axis Tick to ensure unique keys */
-const CustomYAxisTick: React.FC<any> = (props) => {
+/** Custom type for Y-Axis ticks */
+interface CustomTickProps {
+  x: number;
+  y: number;
+  payload: { value: string | number };
+}
+
+/** Render a tick label on the Y-axis */
+const CustomYAxisTick = (props: CustomTickProps): React.ReactElement => {
   const { x, y, payload } = props;
   return (
-    <text
-      x={x}
-      y={y}
-      dy={16}
-      textAnchor="end"
-      fill="#666"
-      key={`y-axis-tick-${payload.value}-${x}-${y}`}
-    >
+    <text x={x} y={y} dy={16} textAnchor="end" fill="#666">
       {payload.value}
     </text>
   );
 };
 
-/** Custom label for the contractor profit segment.
- *  It positions the contractor profit value near the bottom of its segment.
- *  Negative values are rendered in red.
+/**
+ * ContractorProfitLabel is our custom label renderer for the contractor profit segment.
+ *
+ * We define it as a function (rather than a React.FC) so Recharts recognizes it
+ * correctly as a label callback. We also optionally use a ref + useEffect to
+ * re-append its <text> node to the end of its parent so it’s on top visually.
  */
-const renderContractorProfitLabel = (props: any) => {
-  const { x, y, width, value } = props;
-  // Position label inside the bottom of the contractor profit segment.
-  const labelY = value < 0 ? y + 15 : y - 5;
+function ContractorProfitLabel(props: {
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+  value?: number;
+}) {
+  const { x, y, width, height, value } = props;
+  const textRef = useRef<SVGTextElement>(null);
+
+  // Bring this element to the front after it mounts.
+  useEffect(() => {
+    if (textRef.current && textRef.current.parentNode) {
+      // Append it to the end of its parent’s children.
+      textRef.current.parentNode.appendChild(textRef.current);
+    }
+  }, []);
+
+  // If any required coordinate or value prop is missing, return an empty group so we don't crash.
+  if (
+    x === undefined ||
+    y === undefined ||
+    width === undefined ||
+    height === undefined ||
+    value === undefined
+  ) {
+    return <g />;
+  }
+
+  // For positive values, the “top” of the rectangle is at posY;
+  // for negative values (which extend downward) we use posY + posHeight.
+  const labelY = value < 0 ? y + height : y;
+  const displayedValue = `${value >= 0 ? '+' : ''}${formatThousands(value)}`;
+
   return (
     <text
+      ref={textRef}
       x={x + width / 2}
-      y={labelY}
+      y={labelY - 5}
       textAnchor="middle"
-      fill={value < 0 ? "red" : "black"}
+      fill="#000"
+      style={{ pointerEvents: 'none' }}
     >
-      {formatThousands(value)}
+      {displayedValue}
     </text>
   );
-};
+}
 
 /** Reusable Card component with a title */
 type CardProps = {
@@ -64,6 +104,7 @@ type CardProps = {
   children: React.ReactNode;
   className?: string;
 };
+
 const Card: React.FC<CardProps> = ({ title, children, className = '' }) => (
   <div className={`border rounded p-4 bg-white ${className}`}>
     <h2 className="text-base font-semibold mb-2">{title}</h2>
@@ -80,6 +121,7 @@ type CostControlProps = {
   max: number;
   step?: number;
 };
+
 const CostControl: React.FC<CostControlProps> = ({
   label,
   value,
@@ -110,11 +152,7 @@ const CostControl: React.FC<CostControlProps> = ({
   </div>
 );
 
-/** Custom Sale Price Slider with:
-    - A marker for the total base cost.
-    - A label above the slider thumb showing the overall profit percentage.
-    - A display of the current sale price (prefixed with "Sale Price: ") to the left of the slider.
-*/
+/** Custom Sale Price Slider */
 type SalePriceSliderProps = {
   value: number;
   onChange: (value: number) => void;
@@ -123,6 +161,7 @@ type SalePriceSliderProps = {
   step?: number;
   baseCost: number;
 };
+
 const SalePriceSlider: React.FC<SalePriceSliderProps> = ({
   value,
   onChange,
@@ -135,9 +174,10 @@ const SalePriceSlider: React.FC<SalePriceSliderProps> = ({
   const salePricePercent = ((value - min) / sliderRange) * 100;
   const baseCostPercent = ((baseCost - min) / sliderRange) * 100;
   const profitPercentage = ((value - baseCost) / baseCost) * 100;
+
   return (
     <div className="flex items-center">
-      {/* Sale Price display to the left */}
+      {/* Sale Price display */}
       <div className="mr-4 text-md font-semibold text-slate-700">
         Sale Price: {formatThousands(value)}
       </div>
@@ -162,7 +202,7 @@ const SalePriceSlider: React.FC<SalePriceSliderProps> = ({
         >
           <div className="w-1 h-4 bg-red-500" />
         </div>
-        {/* Profit Percentage Label above the thumb */}
+        {/* Profit Percentage Label */}
         <div
           style={{
             position: 'absolute',
@@ -191,6 +231,7 @@ interface Metrics {
   investorRatio: string;
   contractorRatio: string;
 }
+
 const calculateMetrics = (
   price: number,
   acquisition: number,
@@ -203,10 +244,14 @@ const calculateMetrics = (
   const investorRatio = investorCosts / totalBaseCost;
   const contractorRatio = contractorCosts / totalBaseCost;
   const margin = price - totalBaseCost;
+
+  // Split the margin by the same ratio as each party's contribution
   const investorDistribution = investorCosts + investorRatio * margin;
   const contractorDistribution = contractorCosts + contractorRatio * margin;
+
   const investorProfit = investorDistribution - investorCosts;
   const contractorProfit = contractorDistribution - contractorCosts;
+
   return {
     investorProfit,
     contractorProfit,
@@ -225,27 +270,29 @@ const ProfitSharingDashboard: React.FC = () => {
   const [laborCost, setLaborCost] = useState<number>(40);
   const [materialCost, setMaterialCost] = useState<number>(40);
 
-  // Compute metrics (all values in thousands)
-  const metrics = calculateMetrics(salePrice, acquisitionCost, laborCost, materialCost);
+  // Compute metrics
+  const metrics = calculateMetrics(
+    salePrice,
+    acquisitionCost,
+    laborCost,
+    materialCost
+  );
   const totalBaseCost = metrics.totalBaseCost;
 
-  // For Contractor: We want a stacked bar.
-  // - Bottom segment: contractorProfit.
-  // - Top segment: laborCost.
-  // The overall contractor revenue is laborCost + contractorProfit.
+  // For Contractor: labor cost + contractor profit = total contractor revenue
   const contractorRevenue = laborCost + metrics.contractorProfit;
 
-  // Investor capital at risk = acquisition + material
+  // Investor capital at risk
   const investorCapitalAtRisk = acquisitionCost + materialCost;
 
-  // Total loss = salePrice - totalBaseCost
+  // If salePrice < totalBaseCost, there's a (negative) margin or 'loss'
   const totalLoss = salePrice - totalBaseCost;
 
-  // Define slider range for sale price around the base cost
+  // Define slider range for sale price
   const salePriceMin = totalBaseCost * 0.8;
   const salePriceMax = totalBaseCost * 1.5;
 
-  // Build trend data, including contractor revenue for each sale price:
+  // Build trend data for the line chart
   const trendData = useMemo(() => {
     const totalCost = acquisitionCost + laborCost + materialCost;
     const minPrice = totalCost * 0.5;
@@ -266,9 +313,7 @@ const ProfitSharingDashboard: React.FC = () => {
     });
   }, [acquisitionCost, laborCost, materialCost]);
 
-  // Combined data for the profit amount ($) chart.
-  // For Investor: Include investorProfit (and set contractor-related fields to 0).
-  // For Contractor: Include contractorProfit and laborCost.
+  // Combined data for the Current Profit Amount ($) chart.
   const combinedProfitData = [
     {
       name: 'Investor',
@@ -282,11 +327,11 @@ const ProfitSharingDashboard: React.FC = () => {
       investorProfit: 0,
       contractorProfit: metrics.contractorProfit,
       laborCost: laborCost,
-      contractorRevenue: laborCost + metrics.contractorProfit,
+      contractorRevenue: contractorRevenue,
     },
   ];
 
-  // Data for the profit percentage (%) chart (unchanged)
+  // Data for the Current Profit Percentage (%) chart
   const percentageData = [
     { name: 'Investor', percentage: metrics.investorProfitPercent },
     { name: 'Contractor', percentage: metrics.contractorProfitPercent },
@@ -332,27 +377,39 @@ const ProfitSharingDashboard: React.FC = () => {
         <div className="mt-4 bg-blue-50 rounded p-2 flex flex-wrap items-center justify-around text-sm">
           <div>
             Total Base Cost:{' '}
-            <span className="font-semibold">{formatThousands(totalBaseCost)}</span>
+            <span className="font-semibold">
+              {formatThousands(totalBaseCost)}
+            </span>
           </div>
           <div>
             Total Loss:{' '}
-            <span className="font-semibold">{formatThousands(totalLoss)}</span>
+            <span className="font-semibold">
+              {formatThousands(totalLoss)}
+            </span>
           </div>
           <div>
             Contractor Revenue:{' '}
-            <span className="font-semibold">{formatThousands(contractorRevenue)}</span>
+            <span className="font-semibold">
+              {formatThousands(contractorRevenue)}
+            </span>
           </div>
           <div>
             Contractor Share:{' '}
-            <span className="font-semibold">{metrics.contractorRatio}%</span>
+            <span className="font-semibold">
+              {metrics.contractorRatio}%
+            </span>
           </div>
           <div>
             Investor Share:{' '}
-            <span className="font-semibold">{metrics.investorRatio}%</span>
+            <span className="font-semibold">
+              {metrics.investorRatio}%
+            </span>
           </div>
           <div>
             Investor Capital at Risk:{' '}
-            <span className="font-semibold">{formatThousands(investorCapitalAtRisk)}</span>
+            <span className="font-semibold">
+              {formatThousands(investorCapitalAtRisk)}
+            </span>
           </div>
         </div>
       </Card>
@@ -362,7 +419,10 @@ const ProfitSharingDashboard: React.FC = () => {
         {/* Current Profit Amount ($) Chart */}
         <Card title="Current Profit Amount ($)">
           <ResponsiveContainer width="100%" aspect={1}>
-            <BarChart data={combinedProfitData} margin={{ top: 20, right: 20, left: 0, bottom: 5 }}>
+            <BarChart
+              data={combinedProfitData}
+              margin={{ top: 20, right: 20, left: 0, bottom: 5 }}
+            >
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="name" />
               <YAxis
@@ -370,23 +430,47 @@ const ProfitSharingDashboard: React.FC = () => {
                   (dataMin: number) => Math.min(0, dataMin),
                   (dataMax: number) => Math.max(0, dataMax),
                 ]}
-                tick={<CustomYAxisTick />}
+                tick={(tickProps) => <CustomYAxisTick {...tickProps} />}
               >
-                <Label value="Profit ($)" angle={-90} position="insideLeft" style={{ textAnchor: 'middle' }} />
+                <Label
+                  value="Profit ($)"
+                  angle={-90}
+                  position="insideLeft"
+                  style={{ textAnchor: 'middle' }}
+                />
               </YAxis>
               <Tooltip formatter={(value: number) => formatThousands(value)} />
-              {/* Investor Profit Bar */}
+
+              {/* Investor Profit Bar – render its label only if nonzero */}
               <Bar dataKey="investorProfit" fill="#8884d8">
-                <LabelList dataKey="investorProfit" position="top" formatter={formatThousands} />
+                <LabelList
+                  dataKey="investorProfit"
+                  position="top"
+                  formatter={(value: number) =>
+                    value === 0 ? '' : formatThousands(value)
+                  }
+                />
               </Bar>
-              {/* Contractor Stacked Bars (same stackId "contractor") */}
-              {/* Contractor Profit segment (bottom) */}
-              <Bar dataKey="contractorProfit" fill="#FF9933" stackId="contractor">
-                <LabelList dataKey="contractorProfit" position="insideBottom" content={renderContractorProfitLabel} />
-              </Bar>
-              {/* Labor Cost segment (top) – its LabelList shows the overall revenue */}
-              <Bar dataKey="laborCost" fill="#82ca9d" stackId="contractor">
-                <LabelList dataKey="contractorRevenue" position="insideTop" formatter={formatThousands} />
+
+              {/* Contractor Stacked Bars */}
+              <Bar
+                dataKey="contractorProfit"
+                fill="#FF9933"
+                stackId="contractor"
+                label={ContractorProfitLabel}
+              />
+              <Bar
+                dataKey="laborCost"
+                fill="#82ca9d"
+                stackId="contractor"
+              >
+                <LabelList
+                  dataKey="contractorRevenue"
+                  position="top"
+                  formatter={(value: number) =>
+                    value === 0 ? '' : formatThousands(value)
+                  }
+                />
               </Bar>
             </BarChart>
           </ResponsiveContainer>
@@ -395,15 +479,31 @@ const ProfitSharingDashboard: React.FC = () => {
         {/* Current Profit Percentage (%) Chart */}
         <Card title="Current Profit Percentage (%)">
           <ResponsiveContainer width="100%" aspect={1}>
-            <BarChart data={percentageData} margin={{ top: 20, right: 20, left: 0, bottom: 5 }}>
+            <BarChart
+              data={percentageData}
+              margin={{ top: 20, right: 20, left: 0, bottom: 5 }}
+            >
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="name" />
-              <YAxis tickFormatter={(value: number) => `${value}%`} domain={[0, 'auto']} tickCount={4}>
-                <Label value="Profit (%)" angle={-90} position="insideLeft" style={{ textAnchor: 'middle' }} />
+              <YAxis
+                tickFormatter={(value: number) => `${value}%`}
+                domain={[0, 'auto']}
+                tickCount={4}
+              >
+                <Label
+                  value="Profit (%)"
+                  angle={-90}
+                  position="insideLeft"
+                  style={{ textAnchor: 'middle' }}
+                />
               </YAxis>
               <Tooltip formatter={(value: number) => `${value.toFixed(2)}%`} />
               <Bar dataKey="percentage" fill="#82ca9d">
-                <LabelList dataKey="percentage" position="top" formatter={(value: number) => `${value.toFixed(2)}%`} />
+                <LabelList
+                  dataKey="percentage"
+                  position="top"
+                  formatter={(value: number) => `${value.toFixed(2)}%`}
+                />
               </Bar>
             </BarChart>
           </ResponsiveContainer>
@@ -412,19 +512,42 @@ const ProfitSharingDashboard: React.FC = () => {
         {/* Profit Trend by Sale Price ($) Chart */}
         <Card title="Profit Trend by Sale Price ($)">
           <ResponsiveContainer width="100%" aspect={1}>
-            <LineChart data={trendData} margin={{ top: 20, right: 20, left: 0, bottom: 5 }}>
+            <LineChart
+              data={trendData}
+              margin={{ top: 20, right: 20, left: 0, bottom: 5 }}
+            >
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="salePrice">
                 <Label value="Sale Price ($)" offset={-5} position="insideBottom" />
               </XAxis>
               <YAxis>
-                <Label value="Profit ($)" angle={-90} position="insideLeft" style={{ textAnchor: 'middle' }} />
+                <Label
+                  value="Profit ($)"
+                  angle={-90}
+                  position="insideLeft"
+                  style={{ textAnchor: 'middle' }}
+                />
               </YAxis>
               <Tooltip formatter={(value: number) => formatThousands(value)} />
               <Legend wrapperStyle={{ paddingTop: '20px' }} />
-              <Line type="monotone" dataKey="investorProfit" name="Investor Profit" stroke="#8884d8" />
-              <Line type="monotone" dataKey="contractorProfit" name="Contractor Profit" stroke="#82ca9d" />
-              <Line type="monotone" dataKey="contractorRevenue" name="Contractor Revenue" stroke="#FF9933" />
+              <Line
+                type="monotone"
+                dataKey="investorProfit"
+                name="Investor Profit"
+                stroke="#8884d8"
+              />
+              <Line
+                type="monotone"
+                dataKey="contractorProfit"
+                name="Contractor Profit"
+                stroke="#FF9933"
+              />
+              <Line
+                type="monotone"
+                dataKey="contractorRevenue"
+                name="Contractor Revenue"
+                stroke="#82ca9d"
+              />
             </LineChart>
           </ResponsiveContainer>
         </Card>
